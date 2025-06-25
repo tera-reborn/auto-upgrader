@@ -1,0 +1,11 @@
+{
+    "author": "rei",
+    "description": "automatically upgrades halidoms/relics",
+    "disableAutoUpdate": false,
+    "name": "auto-upgrader",
+    "options": {
+        "reloadable": true,
+        "niceName": "auto-upgrader"
+    },
+    "version": "1.0"
+  }

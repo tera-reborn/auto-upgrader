@@ -1,0 +1,3 @@
+int32 contract
+int32 result # 1: success
+uint64 dbid
