@@ -70,9 +70,7 @@ module.exports = function AutoUpgrader(mod) {
             hooks.itemlist = mod.hook('S_ITEMLIST', 4, (event) => {
                 if (event.gameId !== mod.game.me.gameId || !enabled || !shouldReadInventory) return;
                 
-                if (event.money !== undefined) {
-                    currentMoney = BigInt(event.money);
-                }
+                currentMoney = BigInt(event.money);
                 
                 let currentItems = [];
                 
