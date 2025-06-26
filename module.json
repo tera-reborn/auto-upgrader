@@ -1,11 +1,11 @@
 {
     "author": "rei",
     "description": "automatically upgrades halidoms/relics",
-    "disableAutoUpdate": false,
     "name": "auto-upgrader",
     "options": {
         "reloadable": true,
         "niceName": "auto-upgrader"
     },
-    "version": "1.2.0"
-  }
+    "version": "1.2.0",
+    "servers": ["https://raw.githubusercontent.com/tera-reborn/auto-upgrader/main/"]
+}
