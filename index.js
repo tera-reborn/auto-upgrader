@@ -16,6 +16,11 @@ module.exports = function AutoUpgrader(mod) {
     let currentMoney = 0n;
     let upgradeAllMode = false;
     
+    let accumulatedItems = [];
+    let packetAccumulationTimer = null;
+    let lastPacketTime = 0;
+    const PACKET_ACCUMULATION_DELAY = 200;
+    
     let hooks = {
         itemlist: null,
         requestContract: null,
@@ -37,6 +42,12 @@ module.exports = function AutoUpgrader(mod) {
         contractCreated = false;
         shouldReadInventory = false;
         upgradeAllMode = false;
+        
+        accumulatedItems = [];
+        if (packetAccumulationTimer) {
+            clearTimeout(packetAccumulationTimer);
+            packetAccumulationTimer = null;
+        }
         
         if (contractId) {
             try {
@@ -65,21 +76,88 @@ module.exports = function AutoUpgrader(mod) {
         }
     }
 
+    function combineAccumulatedItems() {
+        if (accumulatedItems.length === 0) return [];
+        
+        const itemMap = new Map();
+        
+        for (let item of accumulatedItems) {
+            if (itemMap.has(item.dbid)) {
+                const existingItem = itemMap.get(item.dbid);
+                existingItem.amount += item.amount;
+                existingItem.id = item.id;
+            } else {
+                itemMap.set(item.dbid, {
+                    dbid: item.dbid,
+                    amount: item.amount,
+                    id: item.id
+                });
+            }
+        }
+        
+        const uniqueItems = Array.from(itemMap.values());
+        const seenDbids = new Set();
+        const finalItems = [];
+        
+        for (let item of uniqueItems) {
+            if (!seenDbids.has(item.dbid)) {
+                seenDbids.add(item.dbid);
+                finalItems.push(item);
+            }
+        }
+        
+        return finalItems;
+    }
+
+    function processAccumulatedPackets() {
+        if (!enabled || !shouldReadInventory) return;
+        
+        let currentItems = combineAccumulatedItems();
+        accumulatedItems = [];
+        
+        currentItems.sort((a, b) => a.id - b.id);
+        
+        if (currentItems.length > 0) {
+            targetItems = currentItems;
+            
+            if (waitingForInventory) {
+                waitingForInventory = false;
+                shouldReadInventory = false;
+                
+                if (targetItems.length >= 2) {
+                    mod.command.message(`Found ${targetItems.length} items (from accumulated packets), money: ${currentMoney.toString()}, starting...`);
+                    
+                    if (upgradeAllMode) {
+                        checkContinuation();
+                        if (!enabled) return;
+                    }
+                    
+                    startUpgradeProcess();
+                } else {
+                    mod.command.message('Need at least 2 items');
+                    enabled = false;
+                }
+            } else if (!processing) {
+                checkContinuation();
+            }
+        }
+    }
+
     function initializeHooks() {
         if (!hooks.itemlist) {
             hooks.itemlist = mod.hook('S_ITEMLIST', 4, (event) => {
                 if (event.gameId !== mod.game.me.gameId || !enabled || !shouldReadInventory) return;
                 
                 currentMoney = BigInt(event.money);
+                const currentTime = Date.now();
                 
-                let currentItems = [];
-                
+                let packetItems = [];
                 if (event.items) {
                     let itemsToCheck = Array.isArray(event.items) ? event.items : Object.values(event.items);
                     
                     for (let item of itemsToCheck) {
                         if (item && targetItemIds.includes(item.id)) {
-                            currentItems.push({
+                            packetItems.push({
                                 dbid: item.dbid,
                                 amount: item.amount || 1,
                                 id: item.id
@@ -88,25 +166,25 @@ module.exports = function AutoUpgrader(mod) {
                     }
                 }
                 
-                currentItems.sort((a, b) => a.id - b.id);
+                accumulatedItems.push(...packetItems);
                 
-                if (currentItems.length > 0) {
-                    targetItems = currentItems;
-                    
-                    if (waitingForInventory) {
-                        waitingForInventory = false;
-                        shouldReadInventory = false;
-                        
-                        if (targetItems.length >= 2) {
-                            mod.command.message(`Found ${targetItems.length} items, money: ${currentMoney.toString()}, starting...`);
-                            startUpgradeProcess();
-                        } else {
-                            mod.command.message('Need at least 2 items');
-                            enabled = false;
-                        }
-                    } else if (!processing) {
-                        checkContinuation();
-                    }
+                if (packetAccumulationTimer) {
+                    clearTimeout(packetAccumulationTimer);
+                }
+                
+                const timeSinceLastPacket = currentTime - lastPacketTime;
+                lastPacketTime = currentTime;
+                
+                if (timeSinceLastPacket < PACKET_ACCUMULATION_DELAY && accumulatedItems.length > packetItems.length) {
+                    packetAccumulationTimer = setTimeout(() => {
+                        processAccumulatedPackets();
+                        packetAccumulationTimer = null;
+                    }, PACKET_ACCUMULATION_DELAY);
+                } else {
+                    packetAccumulationTimer = setTimeout(() => {
+                        processAccumulatedPackets();
+                        packetAccumulationTimer = null;
+                    }, PACKET_ACCUMULATION_DELAY);
                 }
             });
         }
@@ -212,6 +290,7 @@ module.exports = function AutoUpgrader(mod) {
             targetUpgrades = itemCount ? itemCount / 2 : null;
             upgradesCompleted = 0;
             currentMoney = 0n;
+            accumulatedItems = [];
             
             if (upgradeAllMode) {
                 mod.command.message(`Upgrade enabled: ${itemType} all tiers ${targetUpgrades ? `(${targetUpgrades} upgrades)` : '(all)'}`);
@@ -244,18 +323,25 @@ module.exports = function AutoUpgrader(mod) {
             }
             
             let foundPair = false;
-            for (let id of targetItemIds) {
+            let priorityId = null;
+            
+            const sortedIds = [...targetItemIds].sort((a, b) => a - b);
+            
+            for (let id of sortedIds) {
                 if (itemsByIdMap[id] && itemsByIdMap[id].length >= 2) {
-                    const priorityItems = itemsByIdMap[id];
-                    const otherItems = targetItems.filter(item => item.id !== id);
-                    targetItems = [...priorityItems, ...otherItems];
+                    priorityId = id;
                     foundPair = true;
                     break;
                 }
             }
             
-            if (!foundPair) {
-                mod.command.message(`All upgrades completed! ${targetItems.length} items remaining`);
+            if (foundPair && priorityId) {
+                const priorityItems = itemsByIdMap[priorityId];
+                const otherItems = targetItems.filter(item => item.id !== priorityId);
+                targetItems = [...priorityItems, ...otherItems];
+                
+            } else {
+                mod.command.message(`All upgrades completed! ${targetItems.length} items remaining (no pairs found)`);
                 closeContract();
                 return;
             }
@@ -377,4 +463,4 @@ module.exports = function AutoUpgrader(mod) {
     this.destructor = () => {
         cleanup();
     };
-}
+};

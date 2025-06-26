@@ -1,8 +1,6 @@
 # AutoUpgrader
 Automatically upgrades halidoms/relics for the server Arborea.
 
-## ⚠️ IMPORTANT
-**Items must be in your inventory, NOT in pocket tabs!** The mod currently ignores the items in pocket tabs.
 
 ## Installation
 1. Place the mod folder inside Tera/toolbox/mods
