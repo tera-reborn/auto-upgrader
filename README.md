@@ -14,6 +14,7 @@ Automatically upgrades halidoms/relics for the server Arborea.
 ### Basic Commands
 ```
 upgrade on <item_type> <tier|all> [count]
+upgrade check <item_type> <tier>
 upgrade off
 upgrade status
 ```
@@ -32,6 +33,9 @@ upgrade on relic t3
 
 # Upgrade all tiers of ex_halidom (purple halidoms) items
 upgrade on ex_halidom all
+
+# Calculates the amount of T1 t1 relic you would need in order to make a t5 ex_relic
+upgrade check ex_relic t5 
 
 # Check current status // mainly for debugging in case something went wrong
 upgrade status
