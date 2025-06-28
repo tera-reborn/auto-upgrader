@@ -28,6 +28,9 @@ upgrade status
 # Upgrade 10 tier 1 halidom items (5 upgrade attempts)
 upgrade on halidom t1 10
 
+# Upgrade all available halidoms (excludes purples for that use ex_halidom)
+upgrade on halidom all
+
 # Upgrade all available tier 3 relics
 upgrade on relic t3
 
